@@ -1,60 +1,54 @@
-// Live price fetcher using free Metal Price API (no key needed for basic)
+// Free metals price API — no CORS issues
+// Uses metals-api.com free public endpoint & fallback
 async function fetchPrices() {
-  try {
-    // Using open.er-api.com for currency rates as fallback
-    // Primary: metals-api free tier
-    const res = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/SI%3DF?interval=1d&range=1d', {
-      headers: { 'Accept': 'application/json' }
-    });
-    if (!res.ok) throw new Error();
-    const data = await res.json();
-    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    if (price) updateSilver(price);
-  } catch {
-    // Fallback static display
-    setStatic();
-  }
+    let agPrice = null, auPrice = null;
 
-  try {
-    const res = await fetch('https://query1.finance.yahoo.com/v8/finance/chart/GC%3DF?interval=1d&range=1d');
-    const data = await res.json();
-    const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
-    if (price) updateGold(price);
-  } catch {}
-}
+    // Try metals.live (public, no key, no CORS)
+    try {
+        const r = await fetch('https://api.metals.live/v1/spot/silver,gold');
+        if (r.ok) {
+            const data = await r.json();
+            data.forEach(item => {
+                if (item.silver) agPrice = parseFloat(item.silver);
+                if (item.gold)   auPrice  = parseFloat(item.gold);
+            });
+        }
+    } catch {}
 
-function updateSilver(price) {
-  const fmt = '$' + price.toFixed(2);
-  ['ag-usd', 't-ag', 't-ag2'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = fmt;
-  });
-  computeGSR();
-}
+    // Fallback: frankfurter.app for XAG/XAU rates
+    if (!agPrice) {
+        try {
+            const r = await fetch('https://api.frankfurter.app/latest?from=XAG&to=USD');
+            if (r.ok) {
+                const d = await r.json();
+                agPrice = 1 / parseFloat(d.rates.USD);
+            }
+        } catch {}
+    }
 
-function updateGold(price) {
-  const fmt = '$' + price.toFixed(0);
-  ['au-usd', 't-au', 't-au2'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.textContent = fmt;
-  });
-  computeGSR();
-}
+    if (agPrice) {
+        const ag = '$' + agPrice.toFixed(2);
+        ['ag-usd','t-ag','t-ag2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = ag;
+        });
+    }
 
-function computeGSR() {
-  const ag = parseFloat(document.getElementById('ag-usd')?.textContent?.replace('$',''));
-  const au = parseFloat(document.getElementById('au-usd')?.textContent?.replace('$',''));
-  if (ag && au) {
-    const ratio = (au / ag).toFixed(1);
-    ['gsr', 't-gsr', 't-gsr2'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.textContent = ratio + ':1';
-    });
-  }
-}
+    if (auPrice) {
+        const au = '$' + auPrice.toFixed(0);
+        ['au-usd','t-au','t-au2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = au;
+        });
+    }
 
-function setStatic() {
-  if (document.getElementById('ag-usd')) document.getElementById('ag-usd').textContent = 'See chart';
+    if (agPrice && auPrice) {
+        const ratio = (auPrice / agPrice).toFixed(1) + ':1';
+        ['gsr','t-gsr','t-gsr2'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.textContent = ratio;
+        });
+    }
 }
 
 fetchPrices();
