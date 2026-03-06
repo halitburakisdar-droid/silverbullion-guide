@@ -120,6 +120,36 @@ def task_deploy():
         log.warning(f"Deploy skipped (git not configured yet): {e}")
 
 
+def task_research():
+    """Skill: research_trending_topics — güncel haberleri topla."""
+    log.info("TASK: Research trending topics")
+    try:
+        from skills.research import run as research_run
+        result = research_run()
+        update_status("last_research", datetime.now().isoformat())
+        update_status("research_headlines", len(result.get("top_headlines", [])))
+        log.info(f"Research: {len(result.get('top_headlines', []))} headlines, F&G: {result.get('fear_greed', {}).get('score')}")
+    except Exception as e:
+        log.error(f"Research error: {e}")
+
+
+def task_create_visual():
+    """Skill: create_visual_content — haftalık görsel üretimi."""
+    log.info("TASK: Create visual content")
+    try:
+        from skills.research import get_latest_context
+        from skills.image_creator import create_for_topic
+        import re
+        context = get_latest_context()
+        lines = [l for l in context.split('\n') if l.startswith('-')]
+        topic = lines[0].replace('- ', '')[:80] if lines else "silver price analysis"
+        path = create_for_topic(topic)
+        update_status("last_visual", datetime.now().isoformat())
+        log.info(f"Visual created: {path}")
+    except Exception as e:
+        log.error(f"Visual creation error: {e}")
+
+
 def task_seo_check():
     """Basic SEO health check."""
     log.info("TASK: SEO check")
@@ -155,16 +185,27 @@ def setup_schedule():
     schedule.every().day.at("07:30").do(task_build_site)
     schedule.every().day.at("19:30").do(task_build_site)
 
+    # Research: 3x daily
+    schedule.every().day.at("06:00").do(task_research)
+    schedule.every().day.at("12:00").do(task_research)
+    schedule.every().day.at("18:00").do(task_research)
+
     # SEO check daily
-    schedule.every().day.at("06:00").do(task_seo_check)
+    schedule.every().day.at("06:30").do(task_seo_check)
+
+    # Weekly visual creation
+    schedule.every().monday.at("09:00").do(task_create_visual)
+    schedule.every().thursday.at("09:00").do(task_create_visual)
 
     # Dashboard every hour
     schedule.every().hour.do(task_update_dashboard)
 
     log.info("Schedule configured:")
-    log.info("  07:00 / 19:00 — Content generation")
-    log.info("  07:30 / 19:30 — Build & deploy")
-    log.info("  06:00 — SEO check")
+    log.info("  06:00 / 12:00 / 18:00 — Research (trending topics)")
+    log.info("  07:00 / 19:00 — Content generation (Qwen)")
+    log.info("  07:30 / 19:30 — Build & deploy (GitHub Pages)")
+    log.info("  06:30 — SEO check")
+    log.info("  Mon & Thu 09:00 — Visual creation (Pollinations.ai)")
     log.info("  Every hour — Dashboard update")
 
 
